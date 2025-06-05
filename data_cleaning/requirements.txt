@@ -1,0 +1,6 @@
+datasets
+matplotlib
+numpy
+googletrans==3.1.0a0
+langdetect
+openai
