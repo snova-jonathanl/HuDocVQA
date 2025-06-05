@@ -24,3 +24,4 @@ $ python pipeline.py \
   --save_intermediate subsample \
   --subsample_size 10
 ```
+See `data_cleaning/README.md` for more detailed installation instructions.
