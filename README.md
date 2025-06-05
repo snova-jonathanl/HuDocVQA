@@ -15,7 +15,7 @@ Coming soon.
 ### Filtering Synthetic Questions & Answers
 Assuming the result of synthetic QA generation was written to disk as a HuggingFace dataset:
 ```
-$ cd data_cleaning
+$ cd HuDocVQA/data_cleaning
 $ python pipeline.py \
   --dataset_path /path/to/your/dataset \
   --output_dir /path/to/output \
