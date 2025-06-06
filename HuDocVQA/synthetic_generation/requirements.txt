@@ -1,0 +1,6 @@
+openai
+tqdm
+jsonlines
+datasets
+tenacity
+pytesseract
