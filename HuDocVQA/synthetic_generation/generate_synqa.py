@@ -13,8 +13,6 @@ from datasets import load_from_disk, Dataset, DatasetDict
 from tqdm import tqdm
 from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential, before_sleep_log
 
-os.environ['TESSDATA_PREFIX'] = './tessdata/'
-
 logging.basicConfig(stream=sys.stderr, level=logging.INFO)
 logger = logging.getLogger(__name__)
 
