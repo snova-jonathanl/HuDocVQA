@@ -9,7 +9,7 @@ import pytesseract
 import logging
 from openai import OpenAI
 from pathlib import Path
-from datasets import load_dataset
+from datasets import load_from_disk, Dataset, DatasetDict
 from tqdm import tqdm
 from tenacity import RetryError, retry, stop_after_attempt, wait_random_exponential, before_sleep_log
 
@@ -54,7 +54,7 @@ def generate_fewshot_example(text, question, answer):
     fewshot_example = fewshot_example.replace('<answer>', answer)
     return fewshot_example
 
-def generate_text_field_response(datapoint, client, api_key, state, use_ocr=False):
+def generate_text_field_response(datapoint, client, state, use_ocr=False):
     if use_ocr:
         text = datapoint["ocr"]
     else:
@@ -76,10 +76,9 @@ def generate_text_field_response(datapoint, client, api_key, state, use_ocr=Fals
         raise ValueError(f'Hit unexpected error during generation: {response.error}')
     return response.choices[0].message.content
 
-def generate_text_field_qa(datapoint, client, api_key, state, use_ocr=False):
-    # retry_wrapped_function = retry(stop=stop_after_attempt(10), wait=wait_exponential(multiplier=1, min=4, max=30), reraise=True, before_sleep=before_sleep_log(logger, logging.INFO))(generate_text_field_response)
+def generate_text_field_qa(datapoint, client, state, use_ocr=False):
     retry_wrapped_function = retry(stop=stop_after_attempt(5), wait=wait_random_exponential(min=4, max=20), reraise=True)(generate_text_field_response)
-    response_text = retry_wrapped_function(datapoint, client, api_key, state, use_ocr=use_ocr)
+    response_text = retry_wrapped_function(datapoint, client, state, use_ocr=use_ocr)
     try:
         question = re.search(r'Kérdés: (.+)\n', response_text).groups()[0]
     except:
@@ -93,7 +92,7 @@ def generate_text_field_qa(datapoint, client, api_key, state, use_ocr=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--input-dataset-path', type=str, help='Path to HuggingFace dataset. Should be the result of dataset.save_to_disk(...)')
-    parser.add_argument('--output-dir', type=str, help='Output directory. Will save images and text separately to disk. Images will be saved as PNGs, text will be saved as jsonl files with paths to the corresponding image.')
+    parser.add_argument('--output-path', type=str, help='Output directory. Will save images and text separately to disk. Images will be saved as PNGs, text will be saved as jsonl files with paths to the corresponding image.')
     parser.add_argument('--seed', type=int, default=42, help='Seed for controlling random state. Only affects how many few shot examples are used for prompting the model')
     args = parser.parse_args()
     if os.environ.get('OPENAI_API_KEY') is None:
@@ -103,27 +102,13 @@ if __name__ == '__main__':
     client = OpenAI(base_url="https://api.sambanova.ai/v1/")
     state = np.random.RandomState(seed=SEED)
     dataset = load_from_disk(args.input_dataset_path)
-    ds_dir = Path(args.output_dir)
+    ds_name = Path(args.input_dataset_path).stem
+    ds_dict = dict()
     for split in dataset.keys():
-        split_root = ds_dir / split
-        img_root = split_root / 'images'
-        split_root.mkdir(exist_ok=True, parents=True)
-        img_root.mkdir(exist_ok=True, parents=True)
-        image_idxs = set()
-        split_handle = jsonlines.open(ds_dir / f'{split}.jsonl', 'w', flush=True)
+        datapoint_list = []
         for i, datapoint in tqdm(enumerate(dataset[split]), total=len(dataset[split]), dynamic_ncols=True, desc=f'{ds_name.split("/")[-1]} {split} split'):
-            if 'image_idx' in datapoint:
-                if datapoint['image_idx'] in image_idxs:
-                    continue
-                image_idxs.add(datapoint['image_idx'])
             if 'ocr' not in datapoint:
                 datapoint['ocr'] = pytesseract.image_to_string(datapoint['image'], lang="hun")
-            if i == 0:
-                num_decimals = 1
-            else:
-                num_decimals = math.floor(math.log(i, 10)) + 1
-            num_zeros = 5 - num_decimals
-            img_path = img_root / ('0' * num_zeros + str(i) + '.png')
             questions = []
             answers = []
             for attempt in range(N_QA_PER_DOCUMENT):
@@ -137,10 +122,10 @@ if __name__ == '__main__':
                 # if we can't generate valid Q/A pairs, don't even save the image
                 print(f'No valid QAs found for datapoint {i}, split {split}', flush=True)
                 continue
-            datapoint['image'].save(img_path)
             datapoint['questions'] = questions
             datapoint['answers'] = answers
-            datapoint['image'] = str(img_path)
-            split_handle.write(datapoint)
-        split_handle.close()
-    print('Done!')
+            datapoint_list.append(datapoint)
+        ds_dict[split] = Dataset.from_list(datapoint_list)
+    output_dataset = DatasetDict(ds_dict)
+    output_dataset.save_to_disk(args.output_path)
+    print(f'Done! Saved output as HF dataset to {args.output_path}')
