@@ -1,5 +1,5 @@
 # Synthetic QA Generation
-We show how to generate synthetic questions and answers from ground-truth text.
+We show how to generate synthetic questions and answers from ground-truth text. The expected input is a HuggingFace dataset saved to disk with a `text` and `image` field. We'll generate multiple questions and answers via few-shot prompting and sampling from Llama 3.3 in the SambaNova cloud. A later post-processing step in the `HuDocVQA/data_cleaning` directory will filter out invalid and repeated questions for the same text.
 
 ## Requirements
 Python 3.9+
